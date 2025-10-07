@@ -1,9 +1,11 @@
+import streamlit as st
 import socket
 import threading
-import streamlit as st
 import time
 
-# --- Globals ---
+# -------------------
+# Initialize session state
+# -------------------
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "sock" not in st.session_state:
@@ -13,7 +15,9 @@ if "connected" not in st.session_state:
 if "username" not in st.session_state:
     st.session_state.username = ""
 
-# --- Functions ---
+# -------------------
+# Functions
+# -------------------
 def connect_to_server(ip, port, username):
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -21,7 +25,7 @@ def connect_to_server(ip, port, username):
         st.session_state.sock = s
         st.session_state.connected = True
         st.session_state.username = username
-        s.send(username.encode())
+        s.send(username.encode())  # send username immediately
         threading.Thread(target=receive_messages, args=(s,), daemon=True).start()
         st.session_state.messages.append(f"✅ Connected to {ip}:{port} as {username}")
     except Exception as e:
@@ -34,13 +38,11 @@ def receive_messages(sock):
             if not msg:
                 break
             st.session_state.messages.append(msg)
-            time.sleep(0.1)
-            st.experimental_rerun()
+            time.sleep(0.05)
         except:
             break
 
-def send_message():
-    text = st.session_state.input_text
+def send_message(text):
     if text.strip() == "":
         return
     try:
@@ -49,26 +51,46 @@ def send_message():
     except:
         st.session_state.messages.append("⚠️ Disconnected from server.")
         st.session_state.connected = False
-    st.session_state.input_text = ""
 
-# --- Streamlit UI ---
-st.title("💬 LAN Chat Client")
+# -------------------
+# Streamlit UI
+# -------------------
+st.set_page_config(page_title="LAN Chat", layout="wide")
+st.title("💬 LAN Chat Client (Enhanced)")
 
-if not st.session_state.connected:
-    ip = st.text_input("Server IP", "10.25.19.135")
-    port = st.number_input("Port", 12345, step=1)
-    username = st.text_input("Your Name")
-    if st.button("Connect") and username.strip() != "":
-        connect_to_server(ip, port, username)
-else:
-    st.success(f"Connected as {st.session_state.username}")
+# Connection panel
+with st.sidebar:
+    st.header("Connect to Server")
+    if not st.session_state.connected:
+        ip = st.text_input("Server IP", "10.25.19.135")
+        port = st.number_input("Port", 12345, step=1)
+        username = st.text_input("Your Name")
+        if st.button("Connect") and username.strip() != "":
+            connect_to_server(ip, port, username)
+    else:
+        st.success(f"Connected as {st.session_state.username}")
+        if st.button("Disconnect"):
+            st.session_state.sock.close()
+            st.session_state.connected = False
+            st.session_state.messages.append("❌ You disconnected.")
 
-# Chat history
+# Chat panel
 st.subheader("Chat History")
-chat_box = st.empty()
-for m in st.session_state.messages[-50:]:
-    st.write(m)
+chat_container = st.container()
 
 # Message input
 if st.session_state.connected:
-    st.text_input("Type a message", key="input_text", on_change=send_message)
+    text = st.text_input("Type a message", key="input_text")
+    if st.button("Send") and text.strip() != "":
+        send_message(text)
+        st.experimental_rerun()  # update messages instantly
+
+# Render messages
+with chat_container:
+    for msg in st.session_state.messages[-100:]:
+        if msg.startswith(f"You:"):
+            st.markdown(f"<p style='text-align: right; color: blue;'>{msg}</p>", unsafe_allow_html=True)
+        elif "joined the chat" in msg or "left the chat" in msg:
+            st.markdown(f"<p style='text-align: center; color: green;'>{msg}</p>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<p style='text-align: left; color: black;'>{msg}</p>", unsafe_allow_html=True)
